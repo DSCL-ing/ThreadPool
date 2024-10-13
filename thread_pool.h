@@ -21,10 +21,25 @@ class ThreadPool  {
     //封拷贝,保证唯一入口-->单例
     ThreadPool(const ThreadPool&) = delete;
     ThreadPool& operator=(const ThreadPool&) = delete;
-    static ThreadPool& instance() {
-      static ThreadPool ins;
-      return ins;
+    
+    //最简洁
+    //static ThreadPool& instance() {
+    //  static ThreadPool ins;
+    //  return ins;
+    //}
+    
+    //双检查加锁(内存序安全版)
+    static ThreadPool& instance(){
+      if(ins_.load() == nullptr){
+        std::lock_guard<std::mutex> lg(mtx_);
+        if(ins_.load() == nullptr){
+          ins_.store(new ThreadPool); //默认内存序:顺序执行
+                                      //乱序:有可能先指向空间再实例化,在中间过程
+        }
+      } 
+      return *ins_.load();
     }
+
 
     //封装异步任务:void()类型
     using Task = std::packaged_task<void()>;
@@ -130,7 +145,13 @@ class ThreadPool  {
     std::condition_variable  cv_lock_;    //条件变量
     std::atomic_bool         stop_;       //标志:标志启停,原子
     std::atomic_int          thread_num_; //线程个数
-    std::queue<Task>         tasks_;      //任务队列,类型都是task
+    std::queue<Task>         tasks_;      //任务队列,类型都是task,无上限
     std::vector<std::thread> pool_;       //池:一个线程数组
+
+    //单例
+    static std::atomic<ThreadPool*> ins_;        //单例对象句柄
+    static std::mutex mtx_;
 };
+std::atomic<ThreadPool*> ThreadPool::ins_(nullptr);
+std::mutex ThreadPool::mtx_;
 #endif  // !__THREAD_POOL_H__
